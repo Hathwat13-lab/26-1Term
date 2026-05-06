@@ -6,10 +6,12 @@
 
 ## 진행 상황 및 업데이트 이력 (Progress & History)
 * [2026-05-04 19:52] (Updater: Jin - Gemini 3.1 Pro (High)) - 협업 프레임워크 규칙 고도화 및 초기 아이디어 메모(dev_initial_memo.md) 생성
+* [2026-05-06 19:00] (Updater: Jin - Gemini 3.1 Pro (High)) - 1D TFIM Exact 모델 구현 및 NN Surrogate 벤치마크 파이프라인 완성. 테스트 폴더(testJin, testNam) 브랜치 푸시 규칙 추가.
 
 ## 협업 및 브랜치 규칙 (Collaboration & Branch Rules)
 - **비동기 협업 시**: `main` 브랜치 업데이트는 상대방이 코드를 확인한 후 Pull Request(PR) 형태로 병합하는 것을 원칙으로 한다.
 - **실시간 협업 시**: 실시간으로 소통하며 작업할 경우에는 예외적으로 `main` 브랜치에 직접 커밋 및 관리를 허용한다.
+- **테스트 폴더 규칙**: `testJin`, `testNam` 등 테스트 전용 폴더 내부의 파일 변경사항은 예외적으로 Pull Request 절차 없이 현재 브랜치에 자유롭게 직접 커밋 및 푸시(Push)가 허용된다.
 - **개발 흐름 (중요)**:
   1. 다른 컴퓨터/에이전트 환경에서 작업 시작 전 **반드시 이 문서를 읽고 컨텍스트를 파악**한다.
   2. 새로운 기능은 **작은 단위의 파일 조각(모듈)**으로 나누어 개발한다.
