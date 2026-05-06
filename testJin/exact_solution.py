@@ -93,4 +93,6 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)  # 제목을 위한 공간 확보
+    plt.savefig('exact_phase_transition.png', dpi=300)
+    print("Saved exact_phase_transition.png")
     plt.show()

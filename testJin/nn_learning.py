@@ -166,4 +166,6 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+    plt.savefig('nn_surrogate_accuracy.png', dpi=300)
+    print("Saved nn_surrogate_accuracy.png")
     plt.show()
