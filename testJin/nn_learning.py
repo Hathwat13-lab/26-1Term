@@ -15,26 +15,27 @@ HERE = Path(__file__).parent   # 항상 testJin/ 기준으로 저장
 # ==========================================
 def _free_energy_raw(h, T, num_k=2000):
     """JIT 없는 raw 버전 — grad/vmap 조합 시 사용
-    NOTE: eps_k의 sqrt 안에 1e-12를 더해 h≈1(임계점)에서 gradient NaN 방지
+    NOTE: eps_k의 sqrt 안에 1e-8을 더해 h≈1(임계점)에서 1·2차 gradient NaN 방지
     """
     beta = 1.0 / T
     k = jnp.linspace(0, jnp.pi, num_k)
-    arg = 1.0 + h**2 - 2.0 * h * jnp.cos(k) + 1e-12  # ← numerical stability
+    arg = 1.0 + h**2 - 2.0 * h * jnp.cos(k) + 1e-8   # ← 2차 미분 안정성을 위해 1e-8
     eps_k = 2.0 * jnp.sqrt(arg)
     x = beta * eps_k / 2.0
     return -T * jnp.mean(jnp.logaddexp(x, -x))
 
-# M_z = -∂F/∂h  (열역학 관계식) — raw 위에 grad 걸어야 NaN 없음
+# χ = -∂²F/∂h²  (횡방향 자화율, 2차 미분) — 상전이에서 발산 → 드라마틱한 시인성
 _dF_dh_raw    = jax.grad(_free_energy_raw, argnums=0)
-_mz_raw       = lambda h, T: -_dF_dh_raw(h, T)
+_d2F_dh2_raw  = jax.grad(_dF_dh_raw,      argnums=0)
+_chi_raw      = lambda h, T: -_d2F_dh2_raw(h, T)      # χ = -∂²F/∂h²
 
 # vmap 먼저, jit은 마지막에
-vmap_F  = jax.jit(jax.vmap(_free_energy_raw, in_axes=(0, 0)))
-vmap_Mz = jax.jit(jax.vmap(_mz_raw,         in_axes=(0, 0)))
+vmap_F   = jax.jit(jax.vmap(_free_energy_raw, in_axes=(0, 0)))
+vmap_chi = jax.jit(jax.vmap(_chi_raw,         in_axes=(0, 0)))
 
 # ==========================================
 # 2. 모델 정의 (멀티태스크 Surrogate)
-#    입력: (T, h)  →  출력: (F, M_z)
+#    입력: (T, h)  →  출력: (F, χ)
 # ==========================================
 # 입력 정규화 상수 (학습 안정성)
 T_SCALE = 8.0    # T  ∈ [0.05, 8.0]  → [~0, 1]
@@ -55,24 +56,24 @@ class TFIMSurrogate(nn.Module):
         z = nn.Dense(self.hidden_dims)(z)
         z = nn.softplus(z)
         # 각 물리량별 head
-        F_head  = nn.Dense(self.hidden_dims // 2)(z)
-        F_head  = nn.softplus(F_head)
-        F_pred  = nn.Dense(1)(F_head)                    # 자유에너지
+        F_head   = nn.Dense(self.hidden_dims // 2)(z)
+        F_head   = nn.softplus(F_head)
+        F_pred   = nn.Dense(1)(F_head)                   # 자유에너지
 
-        Mz_head = nn.Dense(self.hidden_dims // 2)(z)
-        Mz_head = nn.softplus(Mz_head)
-        Mz_pred = nn.Dense(1)(Mz_head)                   # 자화
+        chi_head = nn.Dense(self.hidden_dims // 2)(z)
+        chi_head = nn.softplus(chi_head)
+        chi_pred = nn.Dense(1)(chi_head)                 # 횡방향 자화율 χ = -∂²F/∂h²
 
-        return jnp.concatenate([F_pred, Mz_pred], axis=-1)  # (batch, 2)
+        return jnp.concatenate([F_pred, chi_pred], axis=-1)  # (batch, 2)
 
 # ==========================================
 # 3. 데이터셋 생성
 #    X: (N, 2)  = [T, h]
-#    Y: (N, 2)  = [F, M_z]
+#    Y: (N, 2)  = [F, χ]   ← χ = -∂²F/∂h² (횡방향 자화율)
 # ==========================================
 def generate_dataset(num_samples: int = 15000):
     print(f"\n--- 데이터 생성 ---")
-    print(f"총 {num_samples}개의 레이블 데이터 (T, h) → (F, Mz) 생성 중...")
+    print(f"총 {num_samples}개의 레이블 데이터 (T, h) → (F, χ) 생성 중...")
 
     key = random.PRNGKey(42)
     key_t, key_h, key_shuf = random.split(key, 3)
@@ -84,17 +85,17 @@ def generate_dataset(num_samples: int = 15000):
     h_samp = random.uniform(key_h, (num_samples,), minval=0.05, maxval=2.5)
 
     # JIT 워밍업
-    _ = vmap_F( h_samp[:2], T_samp[:2])
-    _ = vmap_Mz(h_samp[:2], T_samp[:2])
+    _ = vmap_F(  h_samp[:2], T_samp[:2])
+    _ = vmap_chi(h_samp[:2], T_samp[:2])
 
     t0 = time.time()
-    F_vals  = vmap_F( h_samp, T_samp)
-    Mz_vals = vmap_Mz(h_samp, T_samp)
-    jax.block_until_ready(F_vals); jax.block_until_ready(Mz_vals)
+    F_vals   = vmap_F(  h_samp, T_samp)
+    chi_vals = vmap_chi(h_samp, T_samp)
+    jax.block_until_ready(F_vals); jax.block_until_ready(chi_vals)
     print(f"데이터 생성 소요 시간: {time.time()-t0:.4f} 초")
 
-    X = jnp.stack([T_samp, h_samp], axis=1)              # (N, 2)
-    Y = jnp.stack([F_vals, Mz_vals], axis=1)             # (N, 2)
+    X = jnp.stack([T_samp, h_samp], axis=1)               # (N, 2)
+    Y = jnp.stack([F_vals, chi_vals], axis=1)              # (N, 2)
 
     # 셔플 후 8:2 분할
     idx = random.permutation(key_shuf, num_samples)
@@ -186,22 +187,22 @@ if __name__ == "__main__":
     # Exact 재계산 시간
     _ = vmap_F(X_te[:1, 1], X_te[:1, 0])           # 워밍업
     t0 = time.time()
-    F_exact  = vmap_F( X_te[:, 1], X_te[:, 0])
-    Mz_exact = vmap_Mz(X_te[:, 1], X_te[:, 0])
-    jax.block_until_ready(F_exact); jax.block_until_ready(Mz_exact)
+    F_exact   = vmap_F(  X_te[:, 1], X_te[:, 0])
+    chi_exact = vmap_chi(X_te[:, 1], X_te[:, 0])
+    jax.block_until_ready(F_exact); jax.block_until_ready(chi_exact)
     exact_time = time.time() - t0
 
-    F_pred_te  = Y_pred[:, 0]
-    Mz_pred_te = Y_pred[:, 1]
+    F_pred_te   = Y_pred[:, 0]
+    chi_pred_te = Y_pred[:, 1]
 
-    mse_F  = float(jnp.mean((F_pred_te  - Y_te[:, 0]) ** 2))
-    mae_F  = float(jnp.mean(jnp.abs(F_pred_te  - Y_te[:, 0])))
-    mse_Mz = float(jnp.mean((Mz_pred_te - Y_te[:, 1]) ** 2))
-    mae_Mz = float(jnp.mean(jnp.abs(Mz_pred_te - Y_te[:, 1])))
+    mse_F   = float(jnp.mean((F_pred_te   - Y_te[:, 0]) ** 2))
+    mae_F   = float(jnp.mean(jnp.abs(F_pred_te   - Y_te[:, 0])))
+    mse_chi = float(jnp.mean((chi_pred_te - Y_te[:, 1]) ** 2))
+    mae_chi = float(jnp.mean(jnp.abs(chi_pred_te - Y_te[:, 1])))
 
     print("\n--- 평가 결과 (Test set) ---")
-    print(f"  F  | MSE: {mse_F:.6f}  MAE: {mae_F:.6f}")
-    print(f"  Mz | MSE: {mse_Mz:.6f}  MAE: {mae_Mz:.6f}")
+    print(f"  F   | MSE: {mse_F:.6f}  MAE: {mae_F:.6f}")
+    print(f"  chi | MSE: {mse_chi:.6f}  MAE: {mae_chi:.6f}")
     print(f"Exact 연산 시간 : {exact_time:.4f} 초")
     print(f"NN 추론 시간    : {nn_time:.4f} 초")
     if nn_time > 0:
@@ -267,34 +268,37 @@ if __name__ == "__main__":
 
     figC, axC = plt.subplots(figsize=(10, 6))
     figC.patch.set_facecolor(BG)
-    figC.canvas.manager.set_window_title('Fig C — Magnetization: Exact vs NN')
+    figC.canvas.manager.set_window_title('Fig C — Susceptibility: Exact vs NN')
     dark_ax(axC,
-            r'Magnetization $M_z = -\partial F / \partial h$ — Exact (line) vs NN (dots)'
-            f'\nMAE$_{{Mz}}$ = {mae_Mz:.4f}  |  MSE$_{{Mz}}$ = {mse_Mz:.6f}',
+            r'Transverse Susceptibility $\chi = -\partial^2 F / \partial h^2$'
+            r' — Exact (line) vs NN (dots)'
+            f'\nMAE$_{{\\chi}}$ = {mae_chi:.4f}  |  MSE$_{{\\chi}}$ = {mse_chi:.6f}',
             'External Transverse Field  $h / J$',
-            r'Magnetization  $M_z$')
+            r'Susceptibility  $\chi$')
 
     for i, T_val in enumerate(T_plot_list):
         col   = plot_colors[i]
         label = f'T = {T_val}'
 
         # ── Exact 선 ────────────────────────────────────────
-        T_vec_line = jnp.full_like(h_line, T_val)
-        F_line_ex  = vmap_F( h_line, T_vec_line)
-        Mz_line_ex = vmap_Mz(h_line, T_vec_line)
-        axB.plot(h_line, F_line_ex,  color=col, lw=1.8, label=label)
-        axC.plot(h_line, Mz_line_ex, color=col, lw=1.8, label=label)
+        T_vec_line  = jnp.full_like(h_line, T_val)
+        F_line_ex   = vmap_F(  h_line, T_vec_line)
+        chi_line_ex = vmap_chi(h_line, T_vec_line)
+        axB.plot(h_line, F_line_ex,   color=col, lw=1.8, label=label)
+        axC.plot(h_line, chi_line_ex, color=col, lw=1.8, label=label)
 
-        # ── NN 예측 점 ───────────────────────────────────────
+        # ── NN 예측 점 (hollow 마커 — 시인성) ─────────────────
         T_vec_dots = jnp.full((len(h_dots),), T_val)
         X_dots     = jnp.stack([T_vec_dots, h_dots], axis=1)  # (N,2): [T, h]
-        Y_dots_nn  = predict(state.params, X_dots)             # (N,2): [F, Mz]
+        Y_dots_nn  = predict(state.params, X_dots)             # (N,2): [F, χ]
         axB.scatter(h_dots, Y_dots_nn[:, 0],
-                    color=col, s=22, alpha=0.85, marker='o',
-                    edgecolors='none', zorder=3, label='_nolegend_')
+                    facecolors='none', edgecolors=col,
+                    s=30, lw=1.3, alpha=0.9, marker='o',
+                    zorder=3, label='_nolegend_')
         axC.scatter(h_dots, Y_dots_nn[:, 1],
-                    color=col, s=22, alpha=0.85, marker='o',
-                    edgecolors='none', zorder=3, label='_nolegend_')
+                    facecolors='none', edgecolors=col,
+                    s=30, lw=1.3, alpha=0.9, marker='o',
+                    zorder=3, label='_nolegend_')
 
     # 범례 — 선만 표시 (색=온도 대응)
     for ax in (axB, axC):
@@ -305,9 +309,9 @@ if __name__ == "__main__":
     figB.savefig(HERE / 'figB_free_energy_sweep.png', dpi=200,
                  bbox_inches='tight', facecolor=figB.get_facecolor())
     figC.tight_layout()
-    figC.savefig(HERE / 'figC_magnetization_sweep.png', dpi=200,
+    figC.savefig(HERE / 'figC_susceptibility_sweep.png', dpi=200,
                  bbox_inches='tight', facecolor=figC.get_facecolor())
 
     print("\nSaved: figA_learning_curve.png, figB_free_energy_sweep.png, "
-          "figC_magnetization_sweep.png")
+          "figC_susceptibility_sweep.png")
     plt.show()  # 3개 창 동시 표시
