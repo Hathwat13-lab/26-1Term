@@ -48,20 +48,20 @@ class TFIMSurrogate(nn.Module):
     def __call__(self, x):
         # 입력 정규화: [T, h] → [T/T_SCALE, h/H_SCALE]
         x = x / jnp.array([T_SCALE, H_SCALE])
-        # 공유 backbone
+        # 공유 backbone  (tanh: 고차 미분이 전체 구간에서 유효함)
         z = nn.Dense(self.hidden_dims)(x)
-        z = nn.softplus(z)
+        z = nn.tanh(z)
         z = nn.Dense(self.hidden_dims)(z)
-        z = nn.softplus(z)
+        z = nn.tanh(z)
         z = nn.Dense(self.hidden_dims)(z)
-        z = nn.softplus(z)
+        z = nn.tanh(z)
         # 각 물리량별 head
         F_head   = nn.Dense(self.hidden_dims // 2)(z)
-        F_head   = nn.softplus(F_head)
+        F_head   = nn.tanh(F_head)
         F_pred   = nn.Dense(1)(F_head)                   # 자유에너지
 
         chi_head = nn.Dense(self.hidden_dims // 2)(z)
-        chi_head = nn.softplus(chi_head)
+        chi_head = nn.tanh(chi_head)
         chi_pred = nn.Dense(1)(chi_head)                 # 횡방향 자화율 χ = -∂²F/∂h²
 
         return jnp.concatenate([F_pred, chi_pred], axis=-1)  # (batch, 2)
@@ -70,19 +70,29 @@ class TFIMSurrogate(nn.Module):
 # 3. 데이터셋 생성
 #    X: (N, 2)  = [T, h]
 #    Y: (N, 2)  = [F, χ]   ← χ = -∂²F/∂h² (횡방향 자화율)
+#    샘플링: 60% 균일 + 40% 임계점 h≈1 집중 (가우시안)
 # ==========================================
-def generate_dataset(num_samples: int = 15000):
+def generate_dataset(num_samples: int = 20000):
     print(f"\n--- 데이터 생성 ---")
-    print(f"총 {num_samples}개의 레이블 데이터 (T, h) → (F, χ) 생성 중...")
+    n_unif = int(num_samples * 0.6)           # 균일 분포 60%
+    n_crit = num_samples - n_unif             # 임계점 집중 40%
+    print(f"구성: 균일 {n_unif}개 + 임계점(h~1) 집중 {n_crit}개 (T, h) -> (F, chi) 생성 중...")
 
     key = random.PRNGKey(42)
-    key_t, key_h, key_shuf = random.split(key, 3)
+    key_t1, key_h1, key_t2, key_h2, key_shuf = random.split(key, 5)
 
-    # 물리적으로 의미 있는 범위
-    #   T: 0.05 ~ 8.0  (극저온 ~ 고온)
-    #   h: 0.05 ~ 2.5  (임계점 h=1 충분히 포함)
-    T_samp = random.uniform(key_t, (num_samples,), minval=0.05, maxval=8.0)
-    h_samp = random.uniform(key_h, (num_samples,), minval=0.05, maxval=2.5)
+    # ─ 60%: 전 구간 균일 샘플링
+    T_unif = random.uniform(key_t1, (n_unif,), minval=0.05, maxval=8.0)
+    h_unif = random.uniform(key_h1, (n_unif,), minval=0.05, maxval=2.5)
+
+    # ─ 40%: 임계점 h≈1 집중 샘플링 (시그마=0.15 가우시안)
+    #         χ가 을내는 QPT 구역에 충분한 데이터 넘버 확보
+    T_crit = random.uniform(key_t2, (n_crit,), minval=0.05, maxval=8.0)
+    h_crit = random.normal( key_h2, (n_crit,)) * 0.15 + 1.0
+    h_crit = jnp.clip(h_crit, 0.05, 2.5)
+
+    T_samp = jnp.concatenate([T_unif, T_crit])
+    h_samp = jnp.concatenate([h_unif, h_crit])
 
     # JIT 워밍업
     _ = vmap_F(  h_samp[:2], T_samp[:2])
@@ -141,15 +151,15 @@ if __name__ == "__main__":
     key   = random.PRNGKey(0)
     params = model.init(key, jnp.ones((1, 2)))
 
-    # 안정적인 고정 LR + gradient clipping
+    # 안정적인 고정 LR + gradient clipping (8000 epoch 대비 lr 낙춤)
     tx = optax.chain(
         optax.clip_by_global_norm(1.0),
-        optax.adam(learning_rate=1e-3)
+        optax.adam(learning_rate=5e-4)
     )
     state = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
     # ── 학습 루프 ─────────────────────────────────────────
-    num_epochs  = 5000
+    num_epochs  = 8000
     log_every   = 50
     train_losses, test_losses, log_epochs = [], [], []
 
