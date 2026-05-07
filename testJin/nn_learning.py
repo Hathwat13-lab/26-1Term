@@ -167,7 +167,8 @@ if __name__ == "__main__":
                 print(f"Epoch {epoch+1:5d} | Train MSE: {tr_loss:.6f} | Test MSE: {te_loss:.6f}")
 
     jax.block_until_ready(state.params)
-    print(f"학습 소요 시간: {time.time()-t0:.4f} 초")
+    train_time = time.time() - t0
+    print(f"학습 소요 시간: {train_time:.4f} 초")
 
     # ── 최종 예측 ─────────────────────────────────────────
     @jax.jit
@@ -223,6 +224,7 @@ if __name__ == "__main__":
         for sp in ax.spines.values():
             sp.set_edgecolor('#333366')
         ax.grid(True, alpha=0.18, color=GRID, linestyle=':')
+        ax.axvline(1.0, color='white', linestyle=':', alpha=0.25, lw=1.0)
 
     # ── Fig A: 학습 곡선 ──────────────────────────────────
     figA, axA = plt.subplots(figsize=(9, 5))
@@ -239,44 +241,73 @@ if __name__ == "__main__":
     figA.savefig(HERE / 'figA_learning_curve.png', dpi=200,
                  bbox_inches='tight', facecolor=figA.get_facecolor())
 
-    # ── Fig B: F 정확도 (Exact vs NN) ────────────────────
-    figB, axB = plt.subplots(figsize=(7, 6.5))
-    figB.patch.set_facecolor(BG)
-    figB.canvas.manager.set_window_title('Fig B — Free Energy Accuracy')
-    dark_ax(axB, f'Helmholtz Free Energy — Exact vs NN\n'
-                 f'MAE = {mae_F:.4f}  |  MSE = {mse_F:.6f}',
-            'Exact  $F$', 'NN Predicted  $F$')
-    axB.scatter(Y_te[:, 0], F_pred_te, alpha=0.25, s=8,
-                color='#66aaff', rasterized=True, label='Test points')
-    lo = float(jnp.minimum(Y_te[:, 0].min(), F_pred_te.min()))
-    hi = float(jnp.maximum(Y_te[:, 0].max(), F_pred_te.max()))
-    axB.plot([lo, hi], [lo, hi], color='#ff4466', lw=1.8,
-             linestyle='--', label='$y = x$ (perfect)')
-    axB.legend(framealpha=0.25, labelcolor=WHITE, facecolor='#1a1a3a',
-               edgecolor='#444466', fontsize=9)
-    figB.tight_layout()
-    figB.savefig(HERE / 'figB_free_energy_accuracy.png', dpi=200,
-                 bbox_inches='tight', facecolor=figB.get_facecolor())
+    # ── Fig B & C: 자기장 스윕  Exact(선) vs NN(점) per T ──
+    # 비교할 온도 목록
+    T_plot_list = [0.1, 0.5, 1.0, 2.0, 4.0]
+    cmap_plot   = plt.get_cmap('plasma', len(T_plot_list))
+    plot_colors = [cmap_plot(i) for i in range(len(T_plot_list))]
 
-    # ── Fig C: Mz 정확도 (Exact vs NN) ───────────────────
-    figC, axC = plt.subplots(figsize=(7, 6.5))
+    # 촘촘한 h 배열 (Exact 선용)
+    h_line = jnp.linspace(0.05, 2.5, 400)
+    # 성긴 h 배열 (NN 점용 — 지나치게 촘촘하면 선처럼 보임)
+    h_dots = jnp.linspace(0.05, 2.5, 55)
+
+    @jax.jit
+    def predict(params, x):
+        return model.apply(params, x)
+
+    figB, axB = plt.subplots(figsize=(10, 6))
+    figB.patch.set_facecolor(BG)
+    figB.canvas.manager.set_window_title('Fig B — Free Energy: Exact vs NN')
+    dark_ax(axB,
+            f'Helmholtz Free Energy — Exact (line) vs NN (dots)\n'
+            f'MAE$_F$ = {mae_F:.4f}  |  MSE$_F$ = {mse_F:.6f}',
+            'External Transverse Field  $h / J$',
+            'Helmholtz Free Energy  $F$')
+
+    figC, axC = plt.subplots(figsize=(10, 6))
     figC.patch.set_facecolor(BG)
-    figC.canvas.manager.set_window_title('Fig C — Magnetization Accuracy')
-    dark_ax(axC, f'Magnetization $M_z = -\\partial F/\\partial h$ — Exact vs NN\n'
-                 f'MAE = {mae_Mz:.4f}  |  MSE = {mse_Mz:.6f}',
-            'Exact  $M_z$', 'NN Predicted  $M_z$')
-    axC.scatter(Y_te[:, 1], Mz_pred_te, alpha=0.25, s=8,
-                color='#ff88aa', rasterized=True, label='Test points')
-    lo = float(jnp.minimum(Y_te[:, 1].min(), Mz_pred_te.min()))
-    hi = float(jnp.maximum(Y_te[:, 1].max(), Mz_pred_te.max()))
-    axC.plot([lo, hi], [lo, hi], color='#ff4466', lw=1.8,
-             linestyle='--', label='$y = x$ (perfect)')
-    axC.legend(framealpha=0.25, labelcolor=WHITE, facecolor='#1a1a3a',
-               edgecolor='#444466', fontsize=9)
+    figC.canvas.manager.set_window_title('Fig C — Magnetization: Exact vs NN')
+    dark_ax(axC,
+            r'Magnetization $M_z = -\partial F / \partial h$ — Exact (line) vs NN (dots)'
+            f'\nMAE$_{{Mz}}$ = {mae_Mz:.4f}  |  MSE$_{{Mz}}$ = {mse_Mz:.6f}',
+            'External Transverse Field  $h / J$',
+            r'Magnetization  $M_z$')
+
+    for i, T_val in enumerate(T_plot_list):
+        col   = plot_colors[i]
+        label = f'T = {T_val}'
+
+        # ── Exact 선 ────────────────────────────────────────
+        T_vec_line = jnp.full_like(h_line, T_val)
+        F_line_ex  = vmap_F( h_line, T_vec_line)
+        Mz_line_ex = vmap_Mz(h_line, T_vec_line)
+        axB.plot(h_line, F_line_ex,  color=col, lw=1.8, label=label)
+        axC.plot(h_line, Mz_line_ex, color=col, lw=1.8, label=label)
+
+        # ── NN 예측 점 ───────────────────────────────────────
+        T_vec_dots = jnp.full((len(h_dots),), T_val)
+        X_dots     = jnp.stack([T_vec_dots, h_dots], axis=1)  # (N,2): [T, h]
+        Y_dots_nn  = predict(state.params, X_dots)             # (N,2): [F, Mz]
+        axB.scatter(h_dots, Y_dots_nn[:, 0],
+                    color=col, s=22, alpha=0.85, marker='o',
+                    edgecolors='none', zorder=3, label='_nolegend_')
+        axC.scatter(h_dots, Y_dots_nn[:, 1],
+                    color=col, s=22, alpha=0.85, marker='o',
+                    edgecolors='none', zorder=3, label='_nolegend_')
+
+    # 범례 — 선만 표시 (색=온도 대응)
+    for ax in (axB, axC):
+        ax.legend(framealpha=0.25, labelcolor=WHITE, facecolor='#1a1a3a',
+                  edgecolor='#444466', fontsize=9, loc='best')
+
+    figB.tight_layout()
+    figB.savefig(HERE / 'figB_free_energy_sweep.png', dpi=200,
+                 bbox_inches='tight', facecolor=figB.get_facecolor())
     figC.tight_layout()
-    figC.savefig(HERE / 'figC_magnetization_accuracy.png', dpi=200,
+    figC.savefig(HERE / 'figC_magnetization_sweep.png', dpi=200,
                  bbox_inches='tight', facecolor=figC.get_facecolor())
 
-    print("\nSaved: figA_learning_curve.png, figB_free_energy_accuracy.png, "
-          "figC_magnetization_accuracy.png")
+    print("\nSaved: figA_learning_curve.png, figB_free_energy_sweep.png, "
+          "figC_magnetization_sweep.png")
     plt.show()  # 3개 창 동시 표시
