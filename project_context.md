@@ -7,7 +7,7 @@
 ## 진행 상황 및 업데이트 이력 (Progress & History)
 * [2026-05-04 19:52] (Updater: Jin - Gemini 3.1 Pro (High)) - 협업 프레임워크 규칙 고도화 및 초기 아이디어 메모(dev_initial_memo.md) 생성
 * [2026-05-06 19:00] (Updater: Jin - Gemini 3.1 Pro (High)) - 1D TFIM Exact 모델 구현 및 NN Surrogate 벤치마크 파이프라인 완성. 테스트 폴더(testJin, testNam) 브랜치 푸시 규칙 추가.
-* [2026-05-11 14:05] (Updater: Antigravity - Gemini 3 Flash) - FSS 설계도 고도화 및 프로젝트 방향성 조정 기록 (FSS_idea_memo.md 생성 및 위치 변경). NN(타당성) 및 NNN(효율성) 중심의 연구 스토리 확립.
+* [2026-05-11 14:05] (Updater: Jin - Gemini 3 Flash) - FSS 설계도 고도화 및 프로젝트 방향성 조정 기록 (FSS_idea_memo.md 생성 및 위치 변경). NN(타당성) 및 NNN(효율성) 중심의 연구 스토리 확립.
 
 ## 협업 및 브랜치 규칙 (Collaboration & Branch Rules)
 - **비동기 협업 시**: `main` 브랜치 업데이트는 상대방이 코드를 확인한 후 Pull Request(PR) 형태로 병합하는 것을 원칙으로 한다.
