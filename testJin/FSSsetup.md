@@ -1,3 +1,29 @@
+# 📝 물리학 아이디어 노트: 1D TFIM의 양자 상전이 및 열역학적 응답 예측
+
+### 1. 연구 대상 및 시스템 정의
+본 연구는 1차원 가로 자기장 양자 이징 모델(1D Transverse Field Ising Model, TFIM)의 임계 현상과 열역학적 거동을 기계학습 대리 모델을 통해 탐사하는 것을 목적으로 한다. 시스템은 파울리 행렬($\sigma^z, \sigma^x$)로 정의되는 1차원 양자 스핀 사슬이다.
+
+**Hamiltonian ($H$):**
+$$H = -J \sum_{\langle i,j \rangle} \sigma_i^z \sigma_j^z - h \sum_i \sigma_i^x \quad (\text{Initial: NN interaction})$$
+$$H = -J_1 \sum_{\langle i,j \rangle} \sigma_i^z \sigma_j^z - J_2 \sum_{\langle\langle i,k \rangle\rangle} \sigma_i^z \sigma_k^z - h \sum_i \sigma_i^x \quad (\text{Advanced: NNN interaction})$$
+
+### 2. 주요 연구 목적
+*   **열역학적 물리량 확립**: 자유에너지 $F(T, h)$를 예측하고, 이에 대한 $T, h$의 고차 미분값인 비열($C_V$)과 자기감수율($\chi$)을 산출한다.
+    $$C_V = -T \frac{\partial^2 F}{\partial T^2}, \quad \chi = -\frac{\partial^2 F}{\partial h^2}$$
+*   **상전이(Phase Transition) 가시화**: $J=h_c$ 지점에서 발생하는 양자 상전이와 온도에 따른 응답 특성을 히트맵(Heatmap)으로 시각화하여 V-shape 임계 영역을 확인한다.
+
+### 3. 데이터 획득 및 검증 전략
+*   **NN interaction (기초)**:
+    *   **학습 데이터**: 작은 크기의 시스템($L$)에 대해 Exact Diagonalization(ED)을 수행하여 정답지 획득.
+    *   **최종 검증**: 요르단-위그너(Jordan-Wigner) 변환을 통한 해석해(Analytical Solution)와 비교.
+*   **NNN interaction (심화)**:
+    *   **학습 데이터**: 작은 크기의 시스템($L$)에서 다양한 파라미터 조합($J_1, J_2, h$)에 대해 DMRG를 수행하여 정답지 획득 ($T=0$ 기준).
+*   **핵심 질문(Core Question)**: 
+    1. **(NN Case: 타당성 검증)** AI 모델이 작은 시스템($L$)의 데이터를 통해 본 적 없는 거대 시스템($L \to \infty$)의 물리량을 **해석해 수준으로 정확히 모사할 수 있는가?**
+    2. **(NNN Case: 효율성 및 외삽 증명)** 다양한 파라미터 조합을 가진 작은 시스템의 DMRG 데이터를 학습하여, **거대 시스템의 NNN 물리 거동을 정확하고 빠르게 예측할 수 있는가?**
+
+---
+
 이 설계도는 총 4개의 파이썬 파일(스크립트)이 순차적으로 실행되는 구조로 구성됩니다.
 
 ---
