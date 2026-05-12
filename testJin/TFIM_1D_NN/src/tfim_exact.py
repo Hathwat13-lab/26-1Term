@@ -48,28 +48,44 @@ def make_observable_fns(f_scalar, static_L=None):
     else:
         scalar = lambda T, h: f_scalar(T, h, static_L)
 
-    d2T = jax.grad(jax.grad(scalar, argnums=0), argnums=0)
-    d2h = jax.grad(jax.grad(scalar, argnums=1), argnums=1)
+    # First derivatives
+    df_dT = jax.grad(scalar, argnums=0)
+    df_dh = jax.grad(scalar, argnums=1)
+    
+    # Second derivatives
+    d2f_dT2 = jax.grad(df_dT, argnums=0)
+    d2f_dh2 = jax.grad(df_dh, argnums=1)
+
+    def entropy(T, h):
+        return -df_dT(T, h)
+
+    def magnetization(T, h):
+        return -df_dh(T, h)
 
     def cv(T, h):
-        return -T * d2T(T, h)
+        return -T * d2f_dT2(T, h)
 
     def chi(T, h):
-        return -d2h(T, h)
+        return -d2f_dh2(T, h)
 
-    return jax.jit(scalar), jax.jit(cv), jax.jit(chi)
+    return jax.jit(scalar), jax.jit(magnetization), jax.jit(cv), jax.jit(entropy), jax.jit(chi)
 
 
 def vectorized_finite_observables(L):
-    f, cv, chi = make_observable_fns(_finite_scalar, static_L=L)
+    f, m, cv, s, chi = make_observable_fns(_finite_scalar, static_L=L)
     return (
         jax.jit(jax.vmap(f, in_axes=(0, 0))),
+        jax.jit(jax.vmap(m, in_axes=(0, 0))),
         jax.jit(jax.vmap(cv, in_axes=(0, 0))),
+        jax.jit(jax.vmap(s, in_axes=(0, 0))),
         jax.jit(jax.vmap(chi, in_axes=(0, 0))),
     )
 
 
-thermo_f, thermo_cv, thermo_chi = make_observable_fns(_thermo_scalar)
+thermo_f, thermo_m, thermo_cv, thermo_s, thermo_chi = make_observable_fns(_thermo_scalar)
 v_thermo_f = jax.jit(jax.vmap(thermo_f, in_axes=(0, 0)))
+v_thermo_m = jax.jit(jax.vmap(thermo_m, in_axes=(0, 0)))
 v_thermo_cv = jax.jit(jax.vmap(thermo_cv, in_axes=(0, 0)))
+v_thermo_s = jax.jit(jax.vmap(thermo_s, in_axes=(0, 0)))
 v_thermo_chi = jax.jit(jax.vmap(thermo_chi, in_axes=(0, 0)))
+

@@ -78,11 +78,15 @@ def observables_scalar(params, x):
     def f_local(y):
         return free_energy_scalar(params, y[0], y[1], y[2])
 
+    grad_f = jax.grad(f_local)(x)
     hess = jax.hessian(f_local)(x)
     F = f_local(x)
+    M = -grad_f[1]
     Cv = -T * hess[0, 0]
+    S = -grad_f[0]
     chi = -hess[1, 1]
-    return jnp.array([F, Cv, chi])
+    # Return order: [F, Cv, chi, M, S] to keep Cv and chi at indices 1 and 2 for 3_train.py
+    return jnp.array([F, Cv, chi, M, S])
 
 
 batched_free_energy = jax.jit(jax.vmap(free_energy, in_axes=(None, 0)))

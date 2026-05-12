@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from tfim_exact import v_thermo_chi, v_thermo_f
+from tfim_exact import v_thermo_chi, v_thermo_cv, v_thermo_f, v_thermo_m, v_thermo_s
 
 
 ROOT = Path(__file__).resolve().parents[1]

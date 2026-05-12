@@ -168,8 +168,8 @@ def _plot_comparison(loaded):
     fig, axes = plt.subplots(3, len(temps), figsize=(16, 10), sharex=True)
     
     # Pre-compile exact finite L functions to save time
-    _, _, chi_14_fn = vectorized_finite_observables(14)
-    _, _, chi_16_fn = vectorized_finite_observables(16)
+    _, _, _, _, chi_14_fn = vectorized_finite_observables(14)
+    _, _, _, _, chi_16_fn = vectorized_finite_observables(16)
     
     for col, T in enumerate(temps):
         T_vec = jnp.full_like(h_line, T)
