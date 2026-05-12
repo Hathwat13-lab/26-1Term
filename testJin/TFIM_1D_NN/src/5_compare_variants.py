@@ -21,6 +21,7 @@ VARIANTS = {
     "balanced_peak_guard": ROOT / "src" / "variants" / "balanced_peak_guard" / "2_jax_model.py",
     "ferro_lowT_focus": ROOT / "src" / "variants" / "ferro_lowT_focus" / "2_jax_model.py",
     "hessian_feature_tuned_fixed": ROOT / "src" / "variants" / "hessian_feature_tuned_fixed" / "2_jax_model.py",
+    "thermo_consistency_fixed": ROOT / "src" / "2_jax_model.py",
 }
 
 

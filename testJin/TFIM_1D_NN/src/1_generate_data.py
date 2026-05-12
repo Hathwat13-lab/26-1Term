@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from tfim_exact import vectorized_finite_observables, v_thermo_chi, v_thermo_cv, v_thermo_f
+from tfim_exact import vectorized_finite_observables, v_thermo_chi, v_thermo_cv, v_thermo_f, v_thermo_m, v_thermo_s
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +19,7 @@ HOLDOUT_L = (14, 16)
 
 def _write_csv(path, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["T", "h", "L", "inv_L", "F_exact", "Cv_exact", "chi_exact", "split"]
+    fieldnames = ["T", "h", "L", "inv_L", "F_exact", "Cv_exact", "chi_exact", "M_exact", "S_exact", "split"]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -43,14 +43,16 @@ def _rows_for_L(L, split, T_vals, h_vals):
     T_flat = TT.reshape(-1)
     h_flat = HH.reshape(-1)
 
-    vf, vcv, vchi = vectorized_finite_observables(L)
+    vf, vm, vcv, vs, vchi = vectorized_finite_observables(L)
     F = vf(T_flat, h_flat)
     Cv = vcv(T_flat, h_flat)
     chi = vchi(T_flat, h_flat)
+    M = vm(T_flat, h_flat)
+    S = vs(T_flat, h_flat)
     jax.block_until_ready(F)
 
     rows = []
-    for T, h, f, cv, c in zip(T_flat, h_flat, F, Cv, chi):
+    for T, h, f, cv, c, m, s in zip(T_flat, h_flat, F, Cv, chi, M, S):
         rows.append(
             {
                 "T": float(T),
@@ -60,6 +62,8 @@ def _rows_for_L(L, split, T_vals, h_vals):
                 "F_exact": float(f),
                 "Cv_exact": float(cv),
                 "chi_exact": float(c),
+                "M_exact": float(m),
+                "S_exact": float(s),
                 "split": split,
             }
         )
@@ -73,10 +77,12 @@ def _truth_rows(T_vals, h_vals):
     F = v_thermo_f(T_flat, h_flat)
     Cv = v_thermo_cv(T_flat, h_flat)
     chi = v_thermo_chi(T_flat, h_flat)
+    M = v_thermo_m(T_flat, h_flat)
+    S = v_thermo_s(T_flat, h_flat)
     jax.block_until_ready(F)
 
     rows = []
-    for T, h, f, cv, c in zip(T_flat, h_flat, F, Cv, chi):
+    for T, h, f, cv, c, m, s in zip(T_flat, h_flat, F, Cv, chi, M, S):
         rows.append(
             {
                 "T": float(T),
@@ -86,6 +92,8 @@ def _truth_rows(T_vals, h_vals):
                 "F_exact": float(f),
                 "Cv_exact": float(cv),
                 "chi_exact": float(c),
+                "M_exact": float(m),
+                "S_exact": float(s),
                 "split": "analytic",
             }
         )
