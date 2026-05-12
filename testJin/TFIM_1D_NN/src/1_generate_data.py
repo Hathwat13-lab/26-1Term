@@ -33,7 +33,8 @@ def _grid():
 
     T_base = jnp.linspace(0.05, 1.0, 33)
     T_low = jnp.linspace(0.05, 0.25, 13)
-    T_vals = jnp.unique(jnp.concatenate([T_base, T_low]))
+    T_extra = jnp.array([0.001, 0.01])
+    T_vals = jnp.unique(jnp.concatenate([T_base, T_low, T_extra]))
     return T_vals, h_vals
 
 

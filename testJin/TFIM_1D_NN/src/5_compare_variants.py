@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from tfim_exact import v_thermo_chi, v_thermo_f
+from tfim_exact import v_thermo_chi, v_thermo_f, vectorized_finite_observables
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +19,7 @@ VARIANTS = {
     "baseline_derivative_blind": ROOT / "src" / "variants" / "baseline_derivative_blind" / "2_jax_model.py",
     "sobolev_critical": ROOT / "src" / "variants" / "sobolev_critical" / "2_jax_model.py",
     "balanced_peak_guard": ROOT / "src" / "variants" / "balanced_peak_guard" / "2_jax_model.py",
+    "ferro_lowT_focus": ROOT / "src" / "variants" / "ferro_lowT_focus" / "2_jax_model.py",
 }
 
 
@@ -161,25 +162,72 @@ def _write_summary(results):
 def _plot_comparison(loaded):
     FIGURES.mkdir(parents=True, exist_ok=True)
     h_line = jnp.linspace(0.1, 2.0, 360)
-    temps = [0.05, 0.1, 0.2]
-    fig, axes = plt.subplots(1, len(temps), figsize=(14, 4.2), sharey=True)
-    for ax, T in zip(axes, temps):
+    temps = [0.001, 0.05, 0.1, 0.2]
+    # Create 3 rows (L=inf, L=16, L=14), len(temps) columns
+    fig, axes = plt.subplots(3, len(temps), figsize=(16, 10), sharex=True)
+    
+    # Pre-compile exact finite L functions to save time
+    _, _, chi_14_fn = vectorized_finite_observables(14)
+    _, _, chi_16_fn = vectorized_finite_observables(16)
+    
+    for col, T in enumerate(temps):
         T_vec = jnp.full_like(h_line, T)
-        exact = v_thermo_chi(T_vec, h_line)
-        ax.plot(h_line, exact, color="black", lw=2.0, label="exact")
+        
+        # Row 0: L = inf
+        ax_inf = axes[0, col]
+        exact_thermo = v_thermo_chi(T_vec, h_line)
+        ax_inf.plot(h_line, exact_thermo, color="black", lw=2.0, label="exact (L=inf)")
+        
         for name, (model, params) in loaded.items():
             x_inf = jnp.stack([T_vec, h_line, jnp.zeros_like(h_line)], axis=1)
             pred = model.batched_observables(params, x_inf)[:, 2]
-            ax.plot(h_line, pred, lw=1.5, label=name)
-        ax.axvline(1.0, color="gray", ls=":", alpha=0.7)
-        ax.set_title(f"T={T:g}")
-        ax.set_xlabel("h")
-        ax.grid(True, alpha=0.25)
-    axes[0].set_ylabel("chi")
-    axes[-1].legend(fontsize=8)
-    fig.suptitle("Susceptibility comparison by variant")
+            ax_inf.plot(h_line, pred, lw=1.5, alpha=0.8, label=f"{name}")
+            
+        ax_inf.axvline(1.0, color="k", ls=":", alpha=0.3)
+        if col == 0: ax_inf.set_ylabel("chi (L=inf)\n[log scale]")
+        ax_inf.set_title(f"T={T:g}")
+        ax_inf.grid(True, alpha=0.25)
+        ax_inf.set_yscale("log")
+        
+        # Row 1: L = 16
+        ax_16 = axes[1, col]
+        exact_16 = chi_16_fn(T_vec, h_line)
+        ax_16.plot(h_line, exact_16, color="black", lw=2.0, label="exact (L=16)")
+        
+        for name, (model, params) in loaded.items():
+            x_16 = jnp.stack([T_vec, h_line, jnp.full_like(h_line, 1.0/16.0)], axis=1)
+            pred_16 = model.batched_observables(params, x_16)[:, 2]
+            ax_16.plot(h_line, pred_16, lw=1.5, alpha=0.8, label=f"{name}")
+            
+        ax_16.axvline(1.0, color="k", ls=":", alpha=0.3)
+        if col == 0: ax_16.set_ylabel("chi (L=16)\n[log scale]")
+        ax_16.grid(True, alpha=0.25)
+        ax_16.set_yscale("log")
+        
+        # Row 2: L = 14
+        ax_14 = axes[2, col]
+        exact_14 = chi_14_fn(T_vec, h_line)
+        ax_14.plot(h_line, exact_14, color="black", lw=2.0, label="exact (L=14)")
+        
+        for name, (model, params) in loaded.items():
+            x_14 = jnp.stack([T_vec, h_line, jnp.full_like(h_line, 1.0/14.0)], axis=1)
+            pred_14 = model.batched_observables(params, x_14)[:, 2]
+            ax_14.plot(h_line, pred_14, lw=1.5, alpha=0.8, label=f"{name}")
+            
+        ax_14.axvline(1.0, color="k", ls=":", alpha=0.3)
+        if col == 0: ax_14.set_ylabel("chi (L=14)\n[log scale]")
+        ax_14.set_xlabel("h")
+        ax_14.grid(True, alpha=0.25)
+        ax_14.set_yscale("log")
+
+    # Put legend outside the last subplot of each row
+    axes[0, -1].legend(fontsize=8, loc='center left', bbox_to_anchor=(1, 0.5))
+    axes[1, -1].legend(fontsize=8, loc='center left', bbox_to_anchor=(1, 0.5))
+    axes[2, -1].legend(fontsize=8, loc='center left', bbox_to_anchor=(1, 0.5))
+
+    fig.suptitle("Susceptibility extrapolation & interpolation across system sizes")
     fig.tight_layout()
-    fig.savefig(FIGURES / "fig_variant_chi_curves.png", dpi=180)
+    fig.savefig(FIGURES / "fig_variant_chi_curves_multiL.png", dpi=180)
     plt.close(fig)
 
 

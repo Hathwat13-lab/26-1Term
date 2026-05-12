@@ -64,9 +64,10 @@ def _critical_weight(x):
     h = x[:, 1]
     inv_L = x[:, 2]
     h_focus = jnp.exp(-((h - 1.0) / 0.22) ** 2)
-    low_t_focus = 1.0 / (1.0 + 4.0 * T)
+    low_t_focus = 1.0 / (1.0 + 10.0 * T)  # Sharper focus on low T
     large_l_focus = 1.0 / (1.0 + 8.0 * inv_L)
-    w = 1.0 + 5.0 * h_focus * low_t_focus + 2.0 * h_focus * large_l_focus
+    ferro_focus = jax.nn.sigmoid(-10.0 * (h - 0.9)) # Focus on h < 0.9
+    w = 1.0 + 6.0 * h_focus * low_t_focus + 3.0 * h_focus * large_l_focus + 3.0 * ferro_focus * low_t_focus
     return w / jnp.mean(w)
 
 
@@ -134,7 +135,7 @@ def main():
     n = x_train.shape[0]
     batch_size = 1536
     deriv_batch_size = 384
-    epochs = 2600
+    epochs = 3200
     log_every = 50
     chi_weight = 4e-2
     cv_weight = 4e-3
@@ -189,8 +190,8 @@ def main():
 
     elapsed = time.time() - start
     metadata = {
-        "variant": "balanced_peak_guard",
-        "story": "Balanced tuning: keep Sobolev chi supervision, but add an inv_L=0 overshoot guardrail.",
+        "variant": "ferro_lowT_focus",
+        "story": "Ferromagnetic and low-T focus: Added explicit weighting for h < 0.9 and sharpened low T weighting.",
         "train_L": [6, 8, 10, 12],
         "holdout_L": [14, 16],
         "epochs": epochs,
