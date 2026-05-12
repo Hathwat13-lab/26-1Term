@@ -20,6 +20,7 @@ VARIANTS = {
     "sobolev_critical": ROOT / "src" / "variants" / "sobolev_critical" / "2_jax_model.py",
     "balanced_peak_guard": ROOT / "src" / "variants" / "balanced_peak_guard" / "2_jax_model.py",
     "ferro_lowT_focus": ROOT / "src" / "variants" / "ferro_lowT_focus" / "2_jax_model.py",
+    "hessian_feature_tuned_fixed": ROOT / "src" / "variants" / "hessian_feature_tuned_fixed" / "2_jax_model.py",
 }
 
 

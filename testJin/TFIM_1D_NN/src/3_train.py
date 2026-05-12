@@ -77,8 +77,16 @@ def _extrapolation_guardrail(params, xd, yd):
     finite_chi = yd[:, 2]
     allowed = jnp.maximum(finite_chi + 0.22, 1.18 * finite_chi + 0.05)
     critical = jnp.exp(-((xd[:, 1] - 1.0) / 0.25) ** 2) / (1.0 + 3.0 * xd[:, 0])
+    
+    # 1. Overshoot penalty (don't go too high above finite L)
     overshoot = jax.nn.relu(chi_inf - allowed)
-    return jnp.mean(critical * (overshoot / (0.15 + jnp.abs(allowed))) ** 2)
+    overshoot_loss = jnp.mean(critical * (overshoot / (0.15 + jnp.abs(allowed))) ** 2)
+    
+    # 2. Curvature Inversion Penalty (chi MUST be positive)
+    # If chi_inf < 0, heavily penalize.
+    inversion_loss = jnp.mean(jax.nn.relu(-chi_inf) ** 2) * 50.0
+    
+    return overshoot_loss + inversion_loss
 
 
 def _loss(params, xb, yb, xd, yd, chi_weight, cv_weight, guardrail_weight):
@@ -190,8 +198,8 @@ def main():
 
     elapsed = time.time() - start
     metadata = {
-        "variant": "ferro_lowT_focus",
-        "story": "Ferromagnetic and low-T focus: Added explicit weighting for h < 0.9 and sharpened low T weighting.",
+        "variant": "hessian_feature_tuned_fixed",
+        "story": "Feature Engineering + Convexity Penalty: Fixed negative chi bug by using correct scaling r2*log(r2) and adding a strict convexity loss to prevent curvature inversion.",
         "train_L": [6, 8, 10, 12],
         "holdout_L": [14, 16],
         "epochs": epochs,

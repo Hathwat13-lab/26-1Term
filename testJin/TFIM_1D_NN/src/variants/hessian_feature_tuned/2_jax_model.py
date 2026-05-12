@@ -17,23 +17,25 @@ def normalize_x(x):
 
 
 def critical_features(x):
-    """Features capturing the exact non-analytic structure of the 1D TFIM free energy."""
+    """Features capturing the non-analytic structure of the free energy."""
     T = x[..., 0]
     h = x[..., 1]
     inv_L = x[..., 2]
     dh = h - CRITICAL_H
     
-    thermal_rounding = 1.0 * T + 1.2 * inv_L + 1e-3
+    # Gap rounding parameters: allow much sharper behavior at T=0, L=inf
+    thermal_rounding = 1.0 * T + 1.2 * inv_L + 5e-3
     r2 = dh * dh + thermal_rounding * thermal_rounding
+    r = jnp.sqrt(r2)
     
     return jnp.stack(
         [
             dh,
             dh * dh,
             thermal_rounding,
-            r2 * jnp.log(r2 + 1e-8),  # CORRECT FSS singular part for Free Energy
-            jax.nn.softplus(5.0 * dh),
-            jax.nn.softplus(-5.0 * dh),
+            r,                         # Energy gap shape
+            r * jnp.log(r + 1e-8),     # Free energy scaling shape near critical point
+            0.5 * jnp.log(r2 + 1e-8),  # Singularity shape for chi
         ],
         axis=-1,
     )
