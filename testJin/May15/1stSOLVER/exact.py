@@ -62,20 +62,15 @@ def finite_free_energy(T, h, L):
     ln_Z3_rest = jnp.sum(x_P_rest + jnp.log1p(jnp.exp(-2.0 * x_P_rest)))
     ln_Z4_rest = jnp.sum(x_P_rest + jnp.log1p(-jnp.exp(-2.0 * x_P_rest)))
 
-    # 4. 패리티 투영 결합
-    # k=0 모드의 기여분인 2*cosh(x_0)와 2*sinh(x_0)를 밖에서 명시적으로 곱해줍니다.
-    # 이렇게 하면 log(sinh)의 발산(Pole)과 sign() 함수의 미분 불가 문제를 완벽히 우회합니다.
-    # [수치 안정화] x_0의 지수 폭발을 방지하기 위해 max_ln_Z를 동적으로 확장합니다.
-    max_ln_Z = jnp.maximum(ln_Z1, ln_Z3_rest + jnp.abs(x_0))
+    max_ln_Z = ln_Z1
     
     term1 = jnp.exp(ln_Z1 - max_ln_Z)
     term2 = jnp.exp(ln_Z2 - max_ln_Z)
     
-    # 2*cosh(x_0) * exp(ln_Z3_rest) = exp(ln_Z3_rest + x_0) + exp(ln_Z3_rest - x_0)
-    # 2*sinh(x_0) * exp(ln_Z4_rest) = exp(ln_Z4_rest + x_0) - exp(ln_Z4_rest - x_0)
-    # 각각의 지수가 max_ln_Z보다 작거나 같으므로 overflow가 발생하지 않습니다.
-    term3 = jnp.exp(ln_Z3_rest + x_0 - max_ln_Z) + jnp.exp(ln_Z3_rest - x_0 - max_ln_Z)
-    term4 = jnp.exp(ln_Z4_rest + x_0 - max_ln_Z) - jnp.exp(ln_Z4_rest - x_0 - max_ln_Z)
+    # x_0가 음수(h>1)일 때 jnp.exp(x_0) - jnp.exp(-x_0)는 sinh의 성질에 의해 자동으로 음수가 됩니다.
+    # 이 '자동 부호 반전'이 JAX의 미분망 안에서 Kink 없이 상전이를 완벽히 구현합니다.
+    term3 = (jnp.exp(x_0) + jnp.exp(-x_0)) * jnp.exp(ln_Z3_rest - max_ln_Z)
+    term4 = (jnp.exp(x_0) - jnp.exp(-x_0)) * jnp.exp(ln_Z4_rest - max_ln_Z)
 
     # 이전 코드의 마이너스(-)를 플러스(+)로 수정!
     # x_0가 교과서적 컨벤션 h-1/T와 반대 부호이기 때문에 zero mode의 기여분도 + convention으로 맞춰줘야 자연스러움
