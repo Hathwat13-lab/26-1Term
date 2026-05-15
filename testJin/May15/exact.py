@@ -42,58 +42,43 @@ def thermodynamic_free_energy(T, h, num_k=4096):
 
 @partial(jax.jit, static_argnames=("L",))
 def finite_free_energy(T, h, L):
-    """
-    [완벽 수정본] 패리티 진공 교차(Parity crossing) 자동 처리 및 
-    극저온/고온 수치적 아티팩트 완벽 제거 버전.
-    """
     n = jnp.arange(L)
     
-    # 1. 파수(Momentum) 양자화
     k_A = (2.0 * n + 1.0) * jnp.pi / L  # APBC
     k_P = 2.0 * n * jnp.pi / L          # PBC
 
-    # 2. 각 섹터별 분산 관계 (k=0 모드를 제외하고는 무조건 양수)
     eps_A = dispersion(k_A, h)
-    
-    # PBC에서 문제의 k=0 모드(n=0) 제외
     eps_P_rest = dispersion(k_P[1:], h)
 
     x_A = eps_A / (2.0 * T)
     x_P_rest = eps_P_rest / (2.0 * T)
     
-    # [핵심 1] Zero mode (k=0)의 에너지를 절댓값 없이 부호 그대로 추적!
-    # h > 1 일 때 음수가 되면서 패리티 반전이 JAX 미분망 안에서 부드럽게 일어납니다.
+    # [가장 중요한 수정] 절대값이나 sign 함수 없이 (1-h)를 그대로 사용합니다.
     x_0 = (1.0 - h) / T 
 
-    # 3. 분배 함수 파티션 계산 (log1p 기반, EPS_LOG 삭제)
-    # x가 무조건 양수이므로 log1p 내부가 음수가 될 일이 없어 EPS_LOG가 불필요합니다.
     ln_Z1 = jnp.sum(x_A + jnp.log1p(jnp.exp(-2.0 * x_A)))
     ln_Z2 = jnp.sum(x_A + jnp.log1p(-jnp.exp(-2.0 * x_A)))
 
     ln_Z3_rest = jnp.sum(x_P_rest + jnp.log1p(jnp.exp(-2.0 * x_P_rest)))
     ln_Z4_rest = jnp.sum(x_P_rest + jnp.log1p(-jnp.exp(-2.0 * x_P_rest)))
 
-    # 4. 패리티 투영 결합
-    # k=0 모드의 기여분인 2*cosh(x_0)와 2*sinh(x_0)를 밖에서 명시적으로 곱해줍니다.
-    # 이렇게 하면 log(sinh)의 발산(Pole)과 sign() 함수의 미분 불가 문제를 완벽히 우회합니다.
-    max_ln_Z = jnp.maximum(ln_Z1, ln_Z3_rest + jnp.abs(x_0))
+    max_ln_Z = ln_Z1
     
     term1 = jnp.exp(ln_Z1 - max_ln_Z)
     term2 = jnp.exp(ln_Z2 - max_ln_Z)
     
-    # 2*cosh(x_0) = exp(x_0) + exp(-x_0)
+    # x_0가 음수(h>1)일 때 jnp.exp(x_0) - jnp.exp(-x_0)는 sinh의 성질에 의해 자동으로 음수가 됩니다.
+    # 이 '자동 부호 반전'이 JAX의 미분망 안에서 Kink 없이 상전이를 완벽히 구현합니다.
     term3 = (jnp.exp(x_0) + jnp.exp(-x_0)) * jnp.exp(ln_Z3_rest - max_ln_Z)
-    
-    # 2*sinh(x_0) = exp(x_0) - exp(-x_0)
     term4 = (jnp.exp(x_0) - jnp.exp(-x_0)) * jnp.exp(ln_Z4_rest - max_ln_Z)
 
-    # 최종 결합
-    sum_exp = term1 + term2 + term3 - term4
+    # 이전 코드의 마이너스(-)를 플러스(+)로 수정!
+    sum_exp = term1 + term2 + term3 + term4
 
     ln_Z = max_ln_Z + jnp.log(sum_exp) - jnp.log(2.0)
 
     return -T * ln_Z / L
-
+    
 def _finite_scalar(T, h, L):
     """make_observable_fns로 넘기기 위한 래퍼(Wrapper) 함수"""
     return finite_free_energy(T, h, L)
