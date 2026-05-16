@@ -3,6 +3,10 @@ import pandas as pd
 import jax
 import jax.numpy as jnp
 import os
+import sys
+
+# 상위 폴더의 exact.py를 불러오기 위해 경로 추가
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # JAX의 64비트 정밀도 강제 활성화 (극저온에서의 데이터 품질 보장)
 jax.config.update("jax_enable_x64", True)
@@ -82,8 +86,8 @@ def main():
     T_flat, h_flat = create_parameter_grid(num_h=100, num_T=100)
     
     # 2. 시스템 크기 정의
-    train_L_list = [4, 6, 8, 10, 12]
-    test_L_list = [14, 16, np.inf]
+    train_L_list = [8, 10, 12, 14, 16]
+    test_L_list = [18, 30, np.inf]
     
     # 3. Train Data 생성 및 결합
     print("--- Building Train Dataset ---")
@@ -93,7 +97,8 @@ def main():
         train_dfs.append(df)
     
     train_dataset = pd.concat(train_dfs, ignore_index=True)
-    train_path = os.path.join("dataset", "tfim_train.csv")
+    # May15 폴더(상위 폴더)에 저장
+    train_path = os.path.join("..", "tfim_train_L8-16.csv")
     train_dataset.to_csv(train_path, index=False)
     print(f"Train dataset saved: {train_path} (Shape: {train_dataset.shape})")
     
@@ -105,7 +110,8 @@ def main():
         test_dfs.append(df)
         
     test_dataset = pd.concat(test_dfs, ignore_index=True)
-    test_path = os.path.join("dataset", "tfim_test.csv")
+    # May15 폴더(상위 폴더)에 저장
+    test_path = os.path.join("..", "tfim_test_L18-inf.csv")
     test_dataset.to_csv(test_path, index=False)
     print(f"Test dataset saved: {test_path} (Shape: {test_dataset.shape})")
     
