@@ -127,16 +127,16 @@ def main():
 
     T_flat, h_flat = create_parameter_grid(num_h=240, num_T=240)
 
-    train_L_list = [8, 16, 32]
-    test_L_list = [24, 48, 64]
+    train_L_list = [8, 12, 16, 24, 32]
+    test_L_list = [48, 64, 96, 128, np.inf]
 
-    train_path = os.path.join(out_root, "tfim_train_L8_16_32_sparse.csv")
-    test_path = os.path.join(out_root, "tfim_test_extrapolation_v3.csv")
+    train_path = os.path.join(out_root, "tfim_train_L8_12_16_24_32.csv")
+    test_path = os.path.join(out_root, "tfim_test_L48_64_96_128_inf.csv")
 
-    print("--- Building Train Dataset (L=8,16,32) ---")
+    print("--- Building Train Dataset (L=8,12,16,24,32) ---")
     build_and_save_dataset(train_L_list, train_path, T_flat, h_flat, label="Train")
 
-    print("\n--- Building Test Dataset (L=24,48,64) ---")
+    print("\n--- Building Test Dataset (L=48,64,96,128,inf) ---")
     build_and_save_dataset(test_L_list, test_path, T_flat, h_flat, label="Test")
     
     print("\nDataset generation complete!")
