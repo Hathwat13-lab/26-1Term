@@ -46,7 +46,7 @@ def create_parameter_grid(num_h=240, num_T=240):
     - T: [0.001, 2.0] 로그 그리드
     """
     h_vals = np.linspace(0.0, 2.0, num_h, dtype=np.float64)
-    T_vals = np.geomspace(0.001, 2.0, num_T, dtype=np.float64)
+    T_vals = np.geomspace(0.001, 0.5, num_T, dtype=np.float64)
 
     H_grid, T_grid = np.meshgrid(h_vals, T_vals, indexing="xy")
     return jnp.asarray(T_grid.ravel(), dtype=jnp.float64), jnp.asarray(H_grid.ravel(), dtype=jnp.float64)
@@ -54,6 +54,22 @@ def create_parameter_grid(num_h=240, num_T=240):
 
 def _as_float64(array_like):
     return np.asarray(array_like, dtype=np.float64)
+
+
+def _evaluate_in_chunks(fn, T_flat, h_flat, chunk_size=4096):
+    """
+    전체 그리드를 한 번에 JAX에 넣지 않고, 메모리 사용량을 제한하기 위해
+    작은 청크 단위로 계산한 뒤 numpy 배열로 결합합니다.
+    """
+    total = int(T_flat.shape[0])
+    pieces = []
+
+    for start in range(0, total, chunk_size):
+        stop = min(start + chunk_size, total)
+        chunk_values = fn(T_flat[start:stop], h_flat[start:stop])
+        pieces.append(np.asarray(jax.device_get(chunk_values), dtype=np.float64))
+
+    return pieces[0] if len(pieces) == 1 else np.concatenate(pieces, axis=0)
 
 def generate_data_for_L(L, T_flat, h_flat):
     """
@@ -63,20 +79,20 @@ def generate_data_for_L(L, T_flat, h_flat):
 
     if L == np.inf:
         inv_L = np.float64(0.0)
-        F = v_thermo_f(T_flat, h_flat)
-        M = v_thermo_m(T_flat, h_flat)
-        Cv = v_thermo_cv(T_flat, h_flat)
-        S = v_thermo_s(T_flat, h_flat)
-        Chi = v_thermo_chi(T_flat, h_flat)
+        F = _evaluate_in_chunks(v_thermo_f, T_flat, h_flat)
+        M = _evaluate_in_chunks(v_thermo_m, T_flat, h_flat)
+        Cv = _evaluate_in_chunks(v_thermo_cv, T_flat, h_flat)
+        S = _evaluate_in_chunks(v_thermo_s, T_flat, h_flat)
+        Chi = _evaluate_in_chunks(v_thermo_chi, T_flat, h_flat)
     else:
         inv_L = np.float64(1.0 / float(L))
         v_f, v_m, v_cv, v_s, v_chi = vectorized_finite_observables(L)
 
-        F = v_f(T_flat, h_flat)
-        M = v_m(T_flat, h_flat)
-        Cv = v_cv(T_flat, h_flat)
-        S = v_s(T_flat, h_flat)
-        Chi = v_chi(T_flat, h_flat)
+        F = _evaluate_in_chunks(v_f, T_flat, h_flat)
+        M = _evaluate_in_chunks(v_m, T_flat, h_flat)
+        Cv = _evaluate_in_chunks(v_cv, T_flat, h_flat)
+        S = _evaluate_in_chunks(v_s, T_flat, h_flat)
+        Chi = _evaluate_in_chunks(v_chi, T_flat, h_flat)
 
     return pd.DataFrame({
         'T': _as_float64(T_flat),
@@ -130,8 +146,8 @@ def main():
     train_L_list = [8, 12, 16, 24, 32]
     test_L_list = [48, 64, 96, 128, np.inf]
 
-    train_path = os.path.join(out_root, "tfim_train_L8_12_16_24_32.csv")
-    test_path = os.path.join(out_root, "tfim_test_L48_64_96_128_inf.csv")
+    train_path = os.path.join(out_root, "tfim_train_L8_12_16_24_32_Tmax05.csv")
+    test_path = os.path.join(out_root, "tfim_test_L48_64_96_128_inf_Tmax05.csv")
 
     print("--- Building Train Dataset (L=8,12,16,24,32) ---")
     build_and_save_dataset(train_L_list, train_path, T_flat, h_flat, label="Train")
