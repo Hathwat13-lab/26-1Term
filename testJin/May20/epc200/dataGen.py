@@ -45,8 +45,8 @@ def create_parameter_grid(num_h=240, num_T=240):
     - h: [0.0, 2.0] 선형 그리드
     - T: [0.001, 2.0] 로그 그리드
     """
-    h_vals = np.linspace(0.0, 2.0, num_h, dtype=np.float64)
-    T_vals = np.geomspace(0.001, 0.5, num_T, dtype=np.float64)
+    T_vals = np.geomspace(0.001, 0.3, num_T, dtype=np.float64)
+    h_vals = np.linspace(0.5, 1.5, num_h, dtype=np.float64)
 
     H_grid, T_grid = np.meshgrid(h_vals, T_vals, indexing="xy")
     return jnp.asarray(T_grid.ravel(), dtype=jnp.float64), jnp.asarray(H_grid.ravel(), dtype=jnp.float64)
@@ -143,16 +143,16 @@ def main():
 
     T_flat, h_flat = create_parameter_grid(num_h=240, num_T=240)
 
-    train_L_list = [8, 12, 16, 24, 32]
-    test_L_list = [48, 64, 96, 128, np.inf]
+    train_L_list = [32, 64, 96, 128, 192]
+    test_L_list = [256, 384, 512, 768, np.inf]
 
-    train_path = os.path.join(out_root, "tfim_train_L8_12_16_24_32_Tmax05.csv")
-    test_path = os.path.join(out_root, "tfim_test_L48_64_96_128_inf_Tmax05.csv")
+    train_path = os.path.join(out_root, "tfim_train_L32_64_96_128_192_Tmax03.csv")
+    test_path = os.path.join(out_root, "tfim_test_L256_384_512_768_inf_Tmax03.csv")
 
-    print("--- Building Train Dataset (L=8,12,16,24,32) ---")
+    print("--- Building Train Dataset (L=32,64,96,128,192) ---")
     build_and_save_dataset(train_L_list, train_path, T_flat, h_flat, label="Train")
 
-    print("\n--- Building Test Dataset (L=48,64,96,128,inf) ---")
+    print("\n--- Building Test Dataset (L=256,384,512,768,inf) ---")
     build_and_save_dataset(test_L_list, test_path, T_flat, h_flat, label="Test")
     
     print("\nDataset generation complete!")
